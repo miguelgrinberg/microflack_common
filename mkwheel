@@ -1,0 +1,43 @@
+#!/bin/bash -e
+
+# This script builds a wheel for the package and adds it to the wheel directory
+# To build the latest version, invoke it without arguments: ./mkwheel
+# To build a specific version, pass the git tag for that version: ./mkwheel 0.1
+# To build all versions, pass "all" as argument: ./mkwheel all
+
+if [[ "$WHEELHOUSE" == "" ]]; then
+    echo Variable WHEELHOUSE is undefined.
+    exit 1
+fi
+if [[ "$(git diff)" != "" ]]; then
+    echo There are uncomitted changes. Please save your work and try again.
+    exit 1
+fi
+mkdir -p $WHEELHOUSE
+
+build() {
+    rm *.whl 2>/dev/null || true
+    pip wheel -e . --no-deps
+    WHEEL=$(ls *.whl)
+    if [[ -f $WHEELHOUSE/$WHEEL ]]; then
+        echo WARNING: Wheel $WHEEL already exists, skipping.
+        rm $WHEEL
+    else
+        mv $WHEEL $WHEELHOUSE
+    fi
+}
+
+if [[ "$1" == "" ]]; then
+    build
+elif [[ "$1" == "all" ]]; then
+    TAGS=$(git tag)
+    for TAG in $TAGS; do
+        git checkout $TAG
+        build
+    done
+    git checkout master
+else
+    git checkout $1
+    build
+    git checkout master
+fi
