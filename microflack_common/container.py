@@ -99,6 +99,7 @@ def register():
     service_name = get_service_name()
     instance_name = get_instance_name()
     service_address = get_service_address()
+    balance_algorithm = os.environ.get('LB_ALGORITHM', 'roundrobin')
 
     # open a client session with etcd
     etcd = etcd_client()
@@ -107,6 +108,8 @@ def register():
         try:
             etcd.write('/services/{}/location'.format(service_name),
                        get_service_url())
+            etcd.write('/services/{}/backend/balance'.format(service_name),
+                       balance_algorithm)
             etcd.write('/services/{}/upstream/{}'.format(service_name,
                                                          instance_name),
                        service_address, ttl=50)
