@@ -4,10 +4,13 @@ This module contains functions to generate and verify JWT tokens.
 """
 from datetime import datetime, timedelta
 
+from cachetools.func import ttl_cache
+from etcd import EtcdKeyNotFound
 from flask import current_app, g, jsonify
 from flask_httpauth import HTTPTokenAuth
 import jwt
 
+from microflack_common.etcd import etcd_client
 
 token_auth = HTTPTokenAuth('Bearer')
 token_optional_auth = HTTPTokenAuth('Bearer')
@@ -29,6 +32,21 @@ def generate_token(user_id, expires_in=3600):
 @token_auth.verify_token
 def verify_token(token):
     """Token verification callback."""
+
+    # this inner function checks if a token appears in the revoked token list
+    # the ttl_cache decorator from the cachetools package saves the revoked
+    # status for a token for one minute, to avoid lots of duplicated calls to
+    # the etcd service.
+    @ttl_cache(ttl=60)
+    def is_token_revoked(token):
+        try:
+            etcd_client().read('/revoked-tokens/' + token)
+        except EtcdKeyNotFound:
+            return False
+        return True
+
+    if not current_app.config['TESTING'] and is_token_revoked(token):
+        return False
     secret_key = current_app.config['JWT_SECRET_KEY']
     g.jwt_claims = {}
     try:
