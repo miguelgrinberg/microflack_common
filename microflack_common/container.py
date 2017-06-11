@@ -99,6 +99,7 @@ def register():
     service_name = get_service_name()
     instance_name = get_instance_name()
     service_address = get_service_address()
+    load_balancer = os.environ.get('LOAD_BALANCER', 'haproxy')
     balance_algorithm = os.environ.get('LB_ALGORITHM', 'roundrobin')
 
     # open a client session with etcd
@@ -106,13 +107,36 @@ def register():
 
     while True:
         try:
-            etcd.write('/services/{}/location'.format(service_name),
-                       get_service_url())
-            etcd.write('/services/{}/backend/balance'.format(service_name),
-                       balance_algorithm)
-            etcd.write('/services/{}/upstream/{}'.format(service_name,
-                                                         instance_name),
-                       service_address, ttl=50)
+            if load_balancer == 'traefik':
+                # service registration for the traefik load balancer
+                backend = '/traefik/backends/{}-backend/servers/{}/url'.format(
+                    service_name, instance_name)
+                etcd.write(backend + '/url', 'http://' + service_address,
+                           ttl=50)
+                etcd.write(backend + '/weight', '1', ttl=50)
+                if balance_algorithm == 'source':
+                    etcd.write('/traefik/backends/{}-backend/loadbalancer'
+                               '/sticky'.format(service_name), 'true')
+                else:
+                    etcd.write('/traefik/backends/{}-backend/loadbalancer'
+                               '/sticky'.format(service_name), 'false')
+
+                frontend = '/traefik/frontends/{}-frontend'.format(
+                    service_name)
+                etcd.write(frontend + '/backend', service_name + '-backend',
+                           ttl=50)
+                etcd.write(frontend + '/entrypoints', 'http', ttl=50)
+                etcd.write(frontend + '/routes/path/rule',
+                           'PathPrefix:' + get_service_url(), ttl=50)
+            else:
+                # service registration for the haproxy load balancer
+                etcd.write('/services/{}/location'.format(service_name),
+                           get_service_url())
+                etcd.write('/services/{}/backend/balance'.format(service_name),
+                           balance_algorithm)
+                etcd.write('/services/{}/upstream/{}'.format(service_name,
+                                                             instance_name),
+                           service_address, ttl=50)
         except:
             # we had a failure, hopefully we'll get it next time
             pass
