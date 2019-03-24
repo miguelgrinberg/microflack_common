@@ -32,7 +32,7 @@ def _get_requests_session():
 def _make_request(method, url, *args, **kwargs):
     if '://' not in url:
         url = os.environ['LB'] + url
-    raise_for_status = kwargs.pop('raise_for_status', True)
+    raise_for_status = kwargs.pop('raise_for_status', False)
 
     response = getattr(_get_requests_session(), method.lower())(
         url, *args, **kwargs)
